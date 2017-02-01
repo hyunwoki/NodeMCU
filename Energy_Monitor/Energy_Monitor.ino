@@ -5,7 +5,7 @@
 #include <Adafruit_ADS1015.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <Adafruit_Sensor.h>
+//#include <Adafruit_Sensor.h>
 #include <IRremoteESP8266.h>
 #include "DHT.h"
 #include "ap_setting.h"
