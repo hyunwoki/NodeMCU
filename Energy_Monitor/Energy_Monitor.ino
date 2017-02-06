@@ -13,6 +13,7 @@
 #include "ir_code.h"
 #include "icons.h"
 
+
 //DEBUG PRINT
 #define DEBUG_PRINT 1
 #define EVENT_PRINT 1
@@ -60,33 +61,79 @@ WiFiClient wifiClient;
 PubSubClient mqtt(mqtt_server, 1883, callback, wifiClient);
 
 
+
+
+
+void info_display(){
+
+
+  
+}
+
+
+
+
+
+
+
+
 void wifi_connect() {
+
 
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
-
-  delay(200);
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
-    //WiFi.config(IPAddress(192, 168, 10, 112), IPAddress(192, 168, 10, 1), IPAddress(255, 255, 255, 0));
   
-    int Attempt = 0;
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Attempt++;
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);  
+  display.setCursor(0,5);
+  display.println("Connecting to wifi");
+  
+  //display.println("");  
+  display.print("Client ID :");  
+  display.println(mqttClientId);  
 
-      if (EVENT_PRINT) {
-        Serial.print(". ");
-        Serial.print(Attempt); 
-      }
+  //display.println("");  
+  display.print("NODE ID :");  
+  display.println(mqttClientNode);  
+  
+  //display.println("");  
+  display.print("SSID :");  
+  display.println(ssid);  
+  
+  display.display();
+  delay(2000);
+  
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password); 
+  //WiFi.config(IPAddress(192, 168, 10, 112), IPAddress(192, 168, 10, 1), IPAddress(255, 255, 255, 0));
+  
+  int Attempt = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Attempt++;
+    display.print(".");   
+    display.display();
+
+  
+    if (EVENT_PRINT) {
+      Serial.print(". ");
+      Serial.print(Attempt); 
+    }
            
-      if (Attempt == 50)
+      if (Attempt == 30)
       {
           if (EVENT_PRINT) {
               Serial.println();
               Serial.println("Could not connect to WIFI");
+
+              display.println("Could not connect to WIFI");        
+              
+              display.clearDisplay();
+              display.display();
               ESP.restart();
+              
           }
       }
     }
@@ -94,9 +141,15 @@ void wifi_connect() {
       Serial.println("");
       Serial.println("WiFi connected");
       Serial.print("IP address: ");
-      Serial.println(WiFi.localIP());
+      Serial.println(WiFi.localIP());     
    }
-     digitalWrite(LED_GREEN, HIGH);
+
+      display.println("");  
+      display.println("WiFi connected");  
+      display.println(WiFi.localIP());     
+      display.display();
+      digitalWrite(LED_GREEN, HIGH);
+      delay(2000);
 }  
 
 

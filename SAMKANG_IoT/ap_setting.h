@@ -1,5 +1,5 @@
 
-
+// WIFI
 #define mqttClientNode        "PowerMeter"
 #define mqttClientId          "TEST"
 #define mqtt_server           "211.180.34.28"
@@ -20,7 +20,7 @@ String apiKey = "8JIOUYKF34WE5SZ0";
 
 
 // WIFI SETTING
-//const char* ssid     = "SAMKANG_IoT";
-//const char* password = "test1234";
+//const char* WIFI_SSID     = "SAMKANG_IoT";
+//const char* WIFI_PWD = "test1234";
 const char* ssid     = "SKMT";
 const char* password = "20222023";
