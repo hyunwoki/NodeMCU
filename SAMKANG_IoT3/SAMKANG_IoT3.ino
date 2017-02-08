@@ -1,5 +1,4 @@
 #include <DHT.h>
-
 #include <SPI.h>
 #include <Wire.h>
 #include <ESP8266WiFi.h>
@@ -21,17 +20,15 @@
 #include "ir_code.h"
 
 
-
-
 //DEBUG PRINT
-#define DEBUG_PRINT 0
+#define DEBUG_PRINT 1
 #define EVENT_PRINT 1
 #define PAYLOAD_PRINT 1
 
 
 // DHT22
-#define DHTPIN   14
-#define DHTTYPE DHT22     // DHT 22  (AM2302), AM2321
+#define DHTPIN    14
+#define DHTTYPE   DHT22     
 DHT dht(DHTPIN, DHTTYPE);
 
 
@@ -51,21 +48,24 @@ IRrecv irrecv(IR_IN);
 IRsend irsend(IR_OUT);
 
 
-
 long lastMsg = 0;
-float diff = 1.1;
-float temp2 = 0.0;
-float hum2 = 0.0;
-float value = 0.0;
+float diff = 1.0;
+float temp = 0.0;
+float hum = 0.0;
+int power = 0.0;
 
- 
-int  mqttReconnect = 1; //cnt
+int loop_cnt = 0;
+int  mqttReconnect = 0; 
 int  mqttLwtQos = 0;
 int  mqttLwtRetain = true;
 char message_buff[100];
 String clientName;
+
 String AC_state;
-unsigned long fast_update, slow_update;
+String AS_state;
+
+unsigned long fast_update, slow_update, loop_update;
+unsigned long fast_update2, slow_update2;
 unsigned long publish_cnt = 0;
 
 
@@ -132,8 +132,7 @@ void drawDateTime(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, in
 void drawCurrentWeather(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawForecast(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawThingspeak(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
-void drawEnergy1(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
-void drawEnergy2(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
+void drawEnergy(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawTemp(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawInfo(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawForecastDetails(OLEDDisplay *display, int x, int y, int dayIndex);
@@ -146,8 +145,8 @@ void setReadyForWeatherUpdate();
 // frames are the single views that slide from right to left
 //FrameCallback frames[] = { drawDateTime, drawCurrentWeather, drawForecast, drawThingspeak, drawEnergy1, drawEnergy2 };
 
-FrameCallback frames[] = { drawInfo, drawDateTime, drawEnergy1, drawTemp, drawCurrentWeather};
-int numberOfFrames = 5;
+FrameCallback frames[] = {drawDateTime, drawEnergy, drawTemp, drawInfo};
+int numberOfFrames = 4;
 
 OverlayCallback overlays[] = { drawHeaderOverlay};
 int numberOfOverlays = 1;
@@ -254,7 +253,7 @@ void wifi_connect() {
 
   LED_ONLINE();
   
-  ui.setTargetFPS(30);
+  ui.setTargetFPS(15);
   ui.setActiveSymbol(activeSymbole);
   ui.setInactiveSymbol(inactiveSymbole);
 
@@ -342,50 +341,107 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 void loop() {
 
-  if (WiFi.status() != WL_CONNECTED) {
-    wifi_connect();
-  }
-
-  if (!mqtt.connected()) {
-    reconnect();
-  }
-
-  if (readyForWeatherUpdate && ui.getUiState()->frameState == FIXED) {
-    updateData(&display);
-  }
-
+        if (WiFi.status() != WL_CONNECTED) {
+          wifi_connect();
+        }
+      
+        if (!mqtt.connected()) {
+          reconnect();
+        }
+      
+        if (readyForWeatherUpdate && ui.getUiState()->frameState == FIXED) {
+          updateData(&display);
+          mqttReconnect++;   
+        }
+      
   int remainingTimeBudget = ui.update();
-  if (remainingTimeBudget > 0) {
-        calcVI(10, 200);
-        Energy_upload();    
-        mqtt.loop();
-        delay(remainingTimeBudget);
-  }
-        //Temperature();
-        temp_update();
+  if ((millis()-loop_update)>1000) {
+      loop_update = millis();      
+          if (remainingTimeBudget > 0) {
+                calcVI(10, 200);
+                Energy_upload();  
+                Temperature();  
+                mqtt.loop();       
+                loop_cnt++;  
+                delay(remainingTimeBudget);        
+                }        
+    }
+
+  if(loop_cnt == 1000){
+     loop_cnt = 0;
+  }       
 }
 
 
+void Temperature(){
+
+// Wait a few seconds between measurements.
+  if ((millis()-fast_update)>5000) {
+      fast_update = millis();         
+
+  // Reading temperature or humidity takes about 250 milliseconds!
+  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+  float h = dht.readHumidity();
+  // Read temperature as Celsius (the default)
+  float t = dht.readTemperature();
+  // Read temperature as Fahrenheit (isFahrenheit = true)
+  float f = dht.readTemperature(true);
+
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(h) || isnan(t) || isnan(f)) {
+    Serial.println("Failed to read from DHT sensor!");
+    return;
+  }
+
+  // Compute heat index in Fahrenheit (the default)
+  float hif = dht.computeHeatIndex(f, h);
+  // Compute heat index in Celsius (isFahreheit = false)
+  float hic = dht.computeHeatIndex(t, h, false);
+
+   temp = t, hum = h;
+
+   
+// 60sec update      
+   if ((millis()-slow_update)>60000) {
+           slow_update = millis();         
+           mqtt.publish(mqttTopic"/TEMP", FtoS(t).c_str(), true);                     
+           mqtt.publish(mqttTopic"/HUM", FtoS(h).c_str(), true);    
+     }
+
+  if (DEBUG_PRINT){
+      Serial.print("Humidity: ");
+      Serial.print(h);
+      Serial.print(" %\t");
+      Serial.print("Temperature: ");
+      Serial.print(t);
+      Serial.print(" *C ");
+      Serial.print(f);
+      Serial.print(" *F\t");
+      Serial.print("Heat index: ");
+      Serial.print(hic);
+      Serial.print(" *C ");
+      Serial.print(hif);
+      Serial.println(" *F");
+      }
+   }
+}
 
 void Energy_upload(){
 
-    if ((millis()-fast_update)>60000) {
-          fast_update = millis();         
-          value = Irms1 * 230;
-          dtostrf (value, 3, 1, message_buff);
+    if ((millis()-fast_update2)>60000) {
+          fast_update2 = millis();         
+          power = Irms1 * 230;
+          dtostrf (power, 3, 1, message_buff);
           mqtt.publish(mqttTopic"/POWER1", message_buff);  
           delay(50);
-          value = Irms2 * 230;
-          dtostrf (value, 3, 1, message_buff);
+          power = Irms2 * 230;
+          dtostrf (power, 3, 1, message_buff);
           mqtt.publish(mqttTopic"/POWER2", message_buff);  
     }    
 }
 
-
 void serial_debug() {
     if (DEBUG_PRINT) {
-      //Serial.print("Real Power:");
-      //Serial.println(realPower);
       Serial.print("Irms1:");
       Serial.println(Irms1);
       Serial.print("Irms2:");
@@ -398,7 +454,6 @@ void serial_debug() {
       Serial.println(Irms2 * 230);
   }
 }
-
 
 void drawProgress(OLEDDisplay *display, int percentage, String label) {
   display->clear();
@@ -417,15 +472,12 @@ void updateData(OLEDDisplay *display) {
   drawProgress(display, 50, "Updating forecasts...");
   wunderground.updateForecast(WUNDERGRROUND_API_KEY, WUNDERGRROUND_LANGUAGE, WUNDERGROUND_COUNTRY, WUNDERGROUND_CITY);
   drawProgress(display, 80, "Updating Temperature...");
-  //thingspeak.getLastChannelItem(THINGSPEAK_CHANNEL_ID, THINGSPEAK_API_READ_KEY);
-  //Temperature();
+  thingspeak.getLastChannelItem(THINGSPEAK_CHANNEL_ID, THINGSPEAK_API_READ_KEY);
   lastUpdate = timeClient.getFormattedTime();
   readyForWeatherUpdate = false;
   drawProgress(display, 100, "Done...");
   delay(500);
 }
-
-
 
 void drawDateTime(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   display->setTextAlignment(TEXT_ALIGN_CENTER);
@@ -438,6 +490,96 @@ void drawDateTime(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, in
   textWidth = display->getStringWidth(time);
   display->drawString(64 + x, 15 + y, time);
   display->setTextAlignment(TEXT_ALIGN_LEFT);
+}
+
+void drawEnergy(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
+  display->setTextAlignment(TEXT_ALIGN_LEFT);
+  display->setFont(ArialMT_Plain_10);
+  display->drawString(30 + x, 10 + y, "Watt1");
+  display->setFont(ArialMT_Plain_16);
+  power = Irms1 * 230;
+  String strValue1 = String(power);
+  display->drawString(33 + x, 23 + y, strValue1 + "w");
+
+  display->setTextAlignment(TEXT_ALIGN_RIGHT);
+  display->setFont(ArialMT_Plain_10);
+  display->drawString(105 + x, 10 + y, "Watt2");
+  display->setFont(ArialMT_Plain_16);
+  power = Irms2 * 230;
+  String strValue2 = String(power);
+  display->drawString(103 + x, 23 + y, strValue2 + "w");
+}
+
+void drawTemp(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
+  display->setTextAlignment(TEXT_ALIGN_LEFT);
+  display->setColor(WHITE);
+  display->setFont(ArialMT_Plain_10);  
+  
+  display->drawString(22 + x, 10 + y, "Temp");
+  display->setFont(ArialMT_Plain_16);
+  dtostrf (temp, 3, 1, message_buff);
+  String temperature = String(message_buff) + "°c";
+  display->drawString(15 + x, 23 + y, temperature);
+  display->setFont(ArialMT_Plain_10);
+   
+  display->drawString(75 + x, 10 + y, "Humidity");
+  display->setFont(ArialMT_Plain_16);
+  dtostrf (hum, 3, 1, message_buff);
+  String humidity = String(message_buff)  + "%";
+  display->drawString(75 + x, 23 + y, humidity);
+}
+
+void drawInfo(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
+  display->setTextAlignment(TEXT_ALIGN_CENTER);
+  display->setFont(ArialMT_Plain_10);
+  display->drawString(64 + x, 0 + y, "WIFI INFO");
+  display->setTextAlignment(TEXT_ALIGN_CENTER);
+  display->setFont(ArialMT_Plain_10);  
+  display->drawString(64 + x, 10 + y, "SSID:");
+  display->drawString(64 + x, 20 + y, WIFI_SSID);
+  display->drawString(64 + x, 30 + y, "DEVICE ID:");
+  String ID = String(mqttClientId);    
+  display->drawString(64 + x, 40 + y, ID);
+
+}
+
+void drawForecastDetails(OLEDDisplay *display, int x, int y, int dayIndex) {
+  display->setTextAlignment(TEXT_ALIGN_CENTER);
+  display->setFont(ArialMT_Plain_10);
+  String day = wunderground.getForecastTitle(dayIndex).substring(0, 3);
+  day.toUpperCase();
+  display->drawString(x + 20, y, day);
+  display->setFont(Meteocons_Plain_21);
+  display->drawString(x + 20, y + 12, wunderground.getForecastIcon(dayIndex));
+  display->setFont(ArialMT_Plain_10);
+  display->drawString(x + 20, y + 34, wunderground.getForecastLowTemp(dayIndex) + "|" + wunderground.getForecastHighTemp(dayIndex));
+  display->setTextAlignment(TEXT_ALIGN_LEFT);
+}
+
+void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
+  display->setColor(WHITE);
+  display->setFont(ArialMT_Plain_10);
+  String time = timeClient.getFormattedTime().substring(0, 5);
+  display->setTextAlignment(TEXT_ALIGN_LEFT);  
+  display->drawString(0, 54, time);
+  display->drawString(0, 40, AC_state);
+  String cnt1 = String(loop_cnt);
+  display->drawString(0, 0, cnt1);
+
+  display->setTextAlignment(TEXT_ALIGN_RIGHT);  
+  String cnt2 = String(mqttReconnect);
+  display->drawString(128, 0, cnt2);
+
+
+  display->setTextAlignment(TEXT_ALIGN_RIGHT);
+  dtostrf (temp, 3, 1, message_buff);
+  String temperature = String(message_buff) + "°c";
+  display->drawString(128, 54, temperature);
+
+  dtostrf (hum, 3, 1, message_buff);
+  String humidity = String(message_buff) + "%";
+  display->drawString(128, 40, humidity);
+  display->drawHorizontalLine(0, 53, 128);  
 }
 
 void drawCurrentWeather(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
@@ -456,13 +598,11 @@ void drawCurrentWeather(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t
   display->drawString(32 + x - weatherIconWidth / 2, 05 + y, weatherIcon);
 }
 
-
 void drawForecast(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   drawForecastDetails(display, x, y, 0);
   drawForecastDetails(display, x + 44, y, 2);
   drawForecastDetails(display, x + 88, y, 4);
 }
-
 
 void drawThingspeak(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   display->setTextAlignment(TEXT_ALIGN_CENTER);
@@ -473,109 +613,10 @@ void drawThingspeak(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, 
   display->drawString(64 + x, 30 + y, thingspeak.getFieldValue(1) + "%");
 }
 
-
-void drawEnergy1(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
-  display->setTextAlignment(TEXT_ALIGN_LEFT);
-  display->setFont(ArialMT_Plain_10);
-  display->drawString(20 + x, 5 + y, "Watt1");
-  display->setFont(ArialMT_Plain_16);
-  value = Irms1 * 230;
-  dtostrf (value, 3, 1, message_buff);
-  String strValue1 = String(message_buff);
-  display->drawString(15 + x, 20 + y, strValue1 + "w");
-
-
-  display->setFont(ArialMT_Plain_10);
-  display->drawString(80 + x, 5 + y, "Watt2");
-  display->setFont(ArialMT_Plain_16);
-  value = Irms1 * 230;
-  dtostrf (value, 3, 1, message_buff);
-  String strValue2 = String(message_buff);
-  display->drawString(75 + x, 20 + y, strValue2 + "w");
- 
-}
-
-
-
-void drawTemp(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
-  display->setTextAlignment(TEXT_ALIGN_LEFT);
-  display->setColor(WHITE);
-  display->setFont(ArialMT_Plain_10);
-  display->drawString(0 + x, 5 + y, "Temperature");
-  display->setFont(ArialMT_Plain_16);
-//  dtostrf (temp, 3, 1, message_buff);
-  String strValue1 = String(message_buff);
-  display->drawString(8 + x, 20 + y, strValue1 + "°c");
-
-  //display->setTextAlignment(TEXT_ALIGN_RIGHT);
-  //display->setColor(WHITE);
-  display->setFont(ArialMT_Plain_10);
-  display->drawString(80 + x, 5 + y, "Humidity");
-  display->setFont(ArialMT_Plain_16);
-//  dtostrf (hum, 3, 1, message_buff);
-  String strValue2 = String(message_buff);
-  display->drawString(75 + x, 20 + y, strValue2 + "%");
-}
-
-
-void drawInfo(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
-  display->setTextAlignment(TEXT_ALIGN_CENTER);
-  display->setColor(WHITE);
-  display->setFont(ArialMT_Plain_10);
-  display->drawString(64 + x, 0 + y, "Device Info");
-  
-  display->setTextAlignment(TEXT_ALIGN_LEFT);
-  display->setFont(ArialMT_Plain_10);
-  display->drawString(0 + x, 10 + y, "1. WIFI SSID:");  display->drawString(64 + x, 10 + y, WIFI_SSID);
-  display->drawString(0 + x, 20 + y, "2. MQTT :");  display->drawString(55 + x, 20 + y, mqtt_server);
-  display->drawString(0 + x, 30 + y, "3. Device ID:");  display->drawString(64 + x, 30 + y, mqttClientId);
-  display->drawString(0 + x, 40 + y, "4. Firmware: ");  display->drawString(64 + x, 40 + y, "1.1");
-}
-
-
-
-
-void drawForecastDetails(OLEDDisplay *display, int x, int y, int dayIndex) {
-  display->setTextAlignment(TEXT_ALIGN_CENTER);
-  display->setFont(ArialMT_Plain_10);
-  String day = wunderground.getForecastTitle(dayIndex).substring(0, 3);
-  day.toUpperCase();
-  display->drawString(x + 20, y, day);
-  display->setFont(Meteocons_Plain_21);
-  display->drawString(x + 20, y + 12, wunderground.getForecastIcon(dayIndex));
-  display->setFont(ArialMT_Plain_10);
-  display->drawString(x + 20, y + 34, wunderground.getForecastLowTemp(dayIndex) + "|" + wunderground.getForecastHighTemp(dayIndex));
-  display->setTextAlignment(TEXT_ALIGN_LEFT);
-}
-
-
-void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
-  display->setColor(WHITE);
-  display->setFont(ArialMT_Plain_10);
-  String time = timeClient.getFormattedTime().substring(0, 5);
-
-  display->setTextAlignment(TEXT_ALIGN_LEFT);  
-  display->drawString(0, 54, time);
-  display->drawString(0, 40, AC_state);
-  
-  display->setTextAlignment(TEXT_ALIGN_RIGHT);
-//  dtostrf (hum, 3, 1, message_buff);
-  String humidity = String(message_buff);
-  display->drawString(128, 40, humidity + "%");
-
-//  dtostrf (temp, 3, 1, message_buff);
-  String temperature = String(message_buff);
-  display->drawString(128, 54, temperature + "°c");
-  display->drawHorizontalLine(0, 53, 128);
-}
-
 void setReadyForWeatherUpdate() {
   Serial.println("Setting readyForUpdate to true");
   readyForWeatherUpdate = true;
 }
-
-
-
 
 void LED_PAYLOAD() {
   digitalWrite(LED_GREEN, HIGH); delay(20); digitalWrite(LED_GREEN, LOW);   
@@ -585,11 +626,9 @@ void LED_ONLINE() {
   digitalWrite(LED_GREEN, HIGH);  
 }
 
-
 void LED_WIFI() {
   digitalWrite(LED_GREEN, HIGH);  delay(20);  digitalWrite(LED_GREEN, LOW);  
 }
-
 
 void LED_WARNING() {
   digitalWrite(LED_RED, HIGH); delay(100); digitalWrite(LED_RED, LOW);   
@@ -599,93 +638,17 @@ void LED_ERR() {
   digitalWrite(LED_RED, HIGH); 
 }
 
-
-
-
-
-
-void thingspeak_connect() {
-
-  if (wifiClient.connect(server, 80)) { //   "184.106.153.149" or api.thingspeak.com
-    String postStr = apiKey;
-    postStr += "&field1=";
-    postStr += String(realPower);
-    postStr += "&field2=";
-    postStr += String(Vrms);
-    postStr += "&field3=";
-    postStr += String(Irms1);
-    postStr += "&field4=";
-    postStr += String(powerFactor);
-    postStr += "\r\n\r\n";
-
-    wifiClient.print("POST /update HTTP/1.1\n");
-    wifiClient.print("Host: api.thingspeak.com\n");
-    wifiClient.print("Connection: close\n");
-    wifiClient.print("X-THINGSPEAKAPIKEY: " + apiKey + "\n");
-    wifiClient.print("Content-Type: application/x-www-form-urlencoded\n");
-    wifiClient.print("Content-Length: ");
-    wifiClient.print(postStr.length());
-    wifiClient.print("\n\n");
-    wifiClient.print(postStr);
-  }
-  wifiClient.stop();
-
-  Serial.println("Waiting...");
-  // thingspeak needs minimum 15 sec delay between updates
-  //delay(5000);
-
-}
-
-//bool checkBound(float newValue, float prevValue, float maxDiff) 
-//{return newValue < prevValue - maxDiff || newValue > prevValue + maxDiff;}
-//
-//void Temperature() {
-//  
-//  if ((millis()-fast_update)>2000) {
-//        fast_update = millis();       
-//        float newTemp = dht.readTemperature();
-//        float newHum = dht.readHumidity();
-//    
-//        if (isnan(newTemp) || isnan(newHum)) {
-//            Serial.println("Failed to read from DHT");    
-//            LED_WARNING();
-//            return;
-//         }
-//        
-//        if (checkBound(newTemp, temp, diff)) {    
-//            temp = newTemp;                 
-//            mqtt.publish(mqttTopic"/TEMP", FtoS(temp).c_str(), true);      
-//         }   
-//             
-//        if (checkBound(newHum, hum, diff)) {
-//            hum = newHum;               
-//            mqtt.publish(mqttTopic"/HUM", FtoS(hum).c_str(), true);       
-//         }
-//    }
-//
-//// 60sec update      
-//      if ((millis()-slow_update)>60000) {
-//           slow_update = millis();         
-//           mqtt.publish(mqttTopic"/TEMP", FtoS(temp).c_str(), true);                     
-//           mqtt.publish(mqttTopic"/HUM", FtoS(hum).c_str(), true);    
-//      }
-//  
-//}
-
-
 // float형 숫자, 소수부분이 0인경우 정수로, 소수부분이 0이 아닌 숫자라면 소수점 이하 첫째자리까지만 표시
-static String FtoS(float num) {
-String str = (String) num;
-
-  if ((int) num == num) {
-    return str.substring(0, str.indexOf(".") + 2);
-  } else {
-    return str.substring(0, str.indexOf(".") + 2);
+  static String FtoS(float num) {
+    String str = (String) num;
+      if ((int) num == num) {
+       return str.substring(0, str.indexOf(".") + 2);
+       } else {
+       return str.substring(0, str.indexOf(".") + 2);
+      }
   }
-}
 
-String macToStr(const uint8_t* mac)
-{
+String macToStr(const uint8_t* mac){
   String result;
   for (int i = 0; i < 6; ++i) {
     result += String(mac[i], 16);
@@ -694,53 +657,4 @@ String macToStr(const uint8_t* mac)
   }
   return result;
 }
-
-
-
-
-void temp_update(){
-
-  delay(2000);
-  // Reading temperature or humidity takes about 250 milliseconds!
-  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  float h = dht.readHumidity();
-  // Read temperature as Celsius (the default)
-  float t = dht.readTemperature();
-  // Read temperature as Fahrenheit (isFahrenheit = true)
-  float f = dht.readTemperature(true);
-
-  // Check if any reads failed and exit early (to try again).
-  if (isnan(h) || isnan(t) || isnan(f)) {
-    Serial.print("Failed to read from DHT sensor!");
-    Serial.print(h);Serial.print("    |   ");
-    Serial.print(t);Serial.print("    |   ");
-    Serial.println(f);
-    return;
-
-  // Compute heat index in Fahrenheit (the default)
-    float hif = dht.computeHeatIndex(f, h);
-  // Compute heat index in Celsius (isFahreheit = false)
-    float hic = dht.computeHeatIndex(t, h, false);
-  
-    Serial.print("Humidity: ");
-    Serial.print(h);
-    Serial.print(" %\t");
-    Serial.print("Temperature: ");
-    Serial.print(t);
-    Serial.print(" *C ");
-    Serial.print(f);
-    Serial.print(" *F\t");
-    Serial.print("Heat index: ");
-    Serial.print(hic);
-    Serial.print(" *C ");
-    Serial.print(hif);
-    Serial.println(" *F");
-  }
-}
-
-
-
-
-
-
 

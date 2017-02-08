@@ -8,6 +8,7 @@
 #define mqttLwtTopic          mqttDomain"/"mqttClientId"/LWT"
 #define humidity_topic        "sensor/humidity"
 #define temperature_topic     "sensor/temperature"
+#define firmware              "v17.210"
 //#define mqttUsername        "samknag"
 //#define mqttPassword        "test1234"
 

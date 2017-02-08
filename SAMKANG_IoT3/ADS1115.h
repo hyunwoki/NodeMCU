@@ -38,6 +38,7 @@ double squareRoot(double fg)
   return n;
 }
 
+
 void calcVI(unsigned int crossings, unsigned int timeout)
 {
 
