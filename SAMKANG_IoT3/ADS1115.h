@@ -1,5 +1,4 @@
 
-
 Adafruit_ADS1115 ads;  /* Use this for the 16-bit version */
 
 //Maximum value of ADS

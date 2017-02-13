@@ -21,8 +21,8 @@
 
 
 //DEBUG PRINT
-#define DEBUG_PRINT 1
-#define EVENT_PRINT 1
+#define DEBUG_PRINT 0
+#define EVENT_PRINT 0
 #define PAYLOAD_PRINT 1
 
 
@@ -55,9 +55,9 @@ float hum = 0.0;
 int power = 0.0;
 
 int loop_cnt = 0;
-int  mqttReconnect = 0; 
-int  mqttLwtQos = 0;
-int  mqttLwtRetain = true;
+int mqttReconnect = 0; 
+int mqttLwtQos = 0;
+int mqttLwtRetain = true;
 char message_buff[100];
 String clientName;
 
@@ -297,7 +297,7 @@ void reconnect() {
       //mqtt.publish(mqttTopic"/ID", mqttClientId);
       if (EVENT_PRINT) {
         Serial.println("connected");
-        mqttReconnect += mqttReconnect;
+        ++mqttReconnect;
       }
     } else {
       if (EVENT_PRINT) {
@@ -331,7 +331,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
         irsend.sendRaw(turn_off, sizeof(turn_off) / sizeof(int), khz);
         AC_state = "OFF";
       }
-    }
+    }    
   }
 }
 
@@ -350,8 +350,7 @@ void loop() {
         }
       
         if (readyForWeatherUpdate && ui.getUiState()->frameState == FIXED) {
-          updateData(&display);
-          mqttReconnect++;   
+          updateData(&display);  
         }
       
   int remainingTimeBudget = ui.update();
@@ -362,7 +361,7 @@ void loop() {
                 Energy_upload();  
                 Temperature();  
                 mqtt.loop();       
-                loop_cnt++;  
+                ++loop_cnt;  
                 delay(remainingTimeBudget);        
                 }        
     }
@@ -522,7 +521,7 @@ void drawTemp(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_
   display->drawString(15 + x, 23 + y, temperature);
   display->setFont(ArialMT_Plain_10);
    
-  display->drawString(75 + x, 10 + y, "Humidity");
+  display->drawString(72 + x, 10 + y, "Humidity");
   display->setFont(ArialMT_Plain_16);
   dtostrf (hum, 3, 1, message_buff);
   String humidity = String(message_buff)  + "%";

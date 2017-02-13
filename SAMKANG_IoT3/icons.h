@@ -11,12 +11,7 @@ const char active_bits[] PROGMEM = {
 const char inactive_bits[] PROGMEM = {
    0x00, 0x18, 0x24, 0x42, 0x42, 0x24, 0x18, 0x00 };
 
-
-
-
-
-   
-   
+  
 #define LOGO16_GLCD_HEIGHT 16 
 #define LOGO16_GLCD_WIDTH  16 
 static const unsigned char PROGMEM logo16_glcd_bmp[] =
