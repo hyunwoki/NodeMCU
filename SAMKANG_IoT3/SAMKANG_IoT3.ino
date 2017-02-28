@@ -495,18 +495,18 @@ void drawEnergy(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int1
   display->setTextAlignment(TEXT_ALIGN_LEFT);
   display->setFont(ArialMT_Plain_10);
   display->drawString(30 + x, 10 + y, "Watt1");
-  display->setFont(ArialMT_Plain_16);
+  display->setFont(ArialMT_Plain_10);
   power = Irms1 * 230;
   String strValue1 = String(power);
-  display->drawString(33 + x, 23 + y, strValue1 + "w");
+  display->drawString(35 + x, 23 + y, strValue1 + "w");
 
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   display->setFont(ArialMT_Plain_10);
-  display->drawString(105 + x, 10 + y, "Watt2");
-  display->setFont(ArialMT_Plain_16);
+  display->drawString(100 + x, 10 + y, "Watt2");
+  display->setFont(ArialMT_Plain_10);
   power = Irms2 * 230;
   String strValue2 = String(power);
-  display->drawString(103 + x, 23 + y, strValue2 + "w");
+  display->drawString(95 + x, 23 + y, strValue2 + "w");
 }
 
 void drawTemp(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {

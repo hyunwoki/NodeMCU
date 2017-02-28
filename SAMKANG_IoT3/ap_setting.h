@@ -1,6 +1,6 @@
 
 // WIFI
-#define mqttClientNode        "PowerMeter"
+#define mqttClientNode        "IoT"
 #define mqttClientId          "TEST"
 #define mqtt_server           "211.180.34.28"
 #define mqttDomain            "SKMT"
@@ -18,7 +18,6 @@ const char* server = "api.thingspeak.com";
 
 // replace with your channel's thingspeak API key, 
 String apiKey = "8JIOUYKF34WE5SZ0";
-
 
 // WIFI SETTING
 //const char* WIFI_SSID   = "SAMKANG_IoT";
